@@ -1,0 +1,79 @@
+# Stage 1: Builder Stage - Install dependencies
+FROM nvidia/cuda:12.1.0-base-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3.10-venv \
+    python3-pip \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and activate virtual environment
+RUN python3.10 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip
+RUN python -m pip install --upgrade pip
+
+WORKDIR /app
+
+# Copy requirements first to leverage cache
+COPY docker/requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code (assuming raptor_api.py is in the project root)
+COPY raptor_api.py .
+# Add any other source files/directories needed by your app here
+# e.g., COPY src/ ./src
+
+# Create directories needed by the app (adjust if needed)
+RUN mkdir -p /app/models /app/logs
+
+# ---
+
+# Stage 2: Final Stage - Setup runtime environment
+FROM nvidia/cuda:12.1.0-base-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code from builder stage
+COPY --from=builder /app/raptor_api.py .
+# Add any other source files/directories needed here as well
+# e.g., COPY --from=builder /app/src ./src
+
+# Copy directories created in builder
+COPY --from=builder /app/models /app/models
+COPY --from=builder /app/logs /app/logs
+
+# Activate virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Set environment variables
+ENV TOKENIZERS_PARALLELISM=false
+ENV LOG_LEVEL=INFO
+# Set default OLLAMA_API_URL, can be overridden in docker-compose
+ENV OLLAMA_API_URL=http://host.docker.internal:11434/api/generate
+
+# Expose the port the app runs on
+EXPOSE 8000
+
+# Command to run the application
+# Ensure 'app' is the correct name of your FastAPI instance in raptor_api.py
+CMD ["uvicorn", "raptor_api:app", "--host", "0.0.0.0", "--port", "8000"]
