@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # 1. Define a base service configuration
+  base-service:
+    build:
+      context: .. # Build context is the parent directory (project root)
+      dockerfile: docker/dockerfile
+    image: progressive-summarizer-raptor:latest # Updated image name
+    restart: unless-stopped
+    volumes:
+      - raptor_models:/app/models # Updated volume names
+      - raptor_logs:/app/logs
+    environment:
+      - TOKENIZERS_PARALLELISM=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Allow overriding OLLAMA_API_URL via .env file or environment
+      - OLLAMA_API_URL=${OLLAMA_API_URL:-http://host.docker.internal:11434/api/generate}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000", "||", "exit", "1" ] # Assuming you have a /health endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s # Give more time for model loading
+    networks:
+      - raptor-net # Updated network name
+
+  # 2. Define the CPU service extending the base
+  progressive-summarizer-raptor-cpu:
+    extends:
+      service: base-service
+    container_name: progressive-summarizer-raptor-cpu # Updated container name
+    profiles:
+      - cpu
+    ports:
+      - "${APP_PORT:-8000}:8000"
+
+  # 3. Define the GPU service extending the base
+  progressive-summarizer-raptor-gpu:
+    extends:
+      service: base-service
+    container_name: progressive-summarizer-raptor-gpu # Updated container name
+    profiles:
+      - gpu
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 # Request 1 GPU
+              capabilities: [ gpu ] # Changed capability for broader compatibility
+
+volumes:
+  raptor_models: # Updated volume names
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # Mounts the 'models' folder from the project root
+      device: ../models
+  raptor_logs: # Updated volume names
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # Mounts the 'logs' folder from the project root
+      device: ../logs
+
+networks:
+  raptor-net: # Updated network name
+    name: raptor-net
+    driver: bridge
