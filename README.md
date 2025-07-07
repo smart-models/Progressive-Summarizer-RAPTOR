@@ -48,6 +48,8 @@ The system is designed for production environments, offering a robust REST API, 
   - [Example API Call](#example-api-call)
   - [Response Format](#response-format)
 - [Configuration](#configuration)
+- [Custom Prompt Templates](#custom-prompt-templates)
+  - [Default Prompt Template](#default-prompt-template)
 - [Contributing](#contributing)
 
 ## How the Summarization Algorithm Works
