@@ -68,12 +68,19 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Set environment variables
 ENV TOKENIZERS_PARALLELISM=false
 ENV LOG_LEVEL=INFO
-# Set default OLLAMA_API_URL, can be overridden in docker-compose
-ENV OLLAMA_API_URL=http://host.docker.internal:11434/api/generate
+
+# Runtime Optimizations
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Pre-create cache directories for optimizations
+RUN mkdir -p /app/.cache/torch /app/.cache/huggingface
+
+# Set optimal permissions
+RUN chmod 755 /app/models /app/logs /app/.cache -R
 
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Command to run the application
-# Ensure 'app' is the correct name of your FastAPI instance in raptor_api.py
-CMD ["uvicorn", "raptor_api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application with optimized settings
+CMD ["python", "-m", "uvicorn", "raptor_api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--loop", "uvloop"]

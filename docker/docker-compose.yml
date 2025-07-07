@@ -1,4 +1,4 @@
-version: '3.8'
+name: RAPTOR
 
 services:
   # 1. Define a base service configuration
@@ -12,45 +12,120 @@ services:
       - raptor_models:/app/models # Updated volume names
       - raptor_logs:/app/logs
     environment:
+      # Existing environment variables
       - TOKENIZERS_PARALLELISM=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Allow overriding OLLAMA_API_URL via .env file or environment
-      - OLLAMA_API_URL=${OLLAMA_API_URL:-http://host.docker.internal:11434/api/generate}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      
+      # Cache and Threading Optimizations
+      - MODEL_CACHE_TIMEOUT=${MODEL_CACHE_TIMEOUT:-3600}
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+      - MKL_NUM_THREADS=${MKL_NUM_THREADS:-4}
+      
+      # GPU Memory Optimizations
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - CUDA_LAUNCH_BLOCKING=0
+      - CUDA_CACHE_DISABLE=0
+      
+      # Performance Tuning
+      - PYTHONUNBUFFERED=1
+      - TORCH_CUDNN_V8_API_ENABLED=1
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000", "||", "exit", "1" ] # Assuming you have a /health endpoint
+      test: ["CMD", "python", "-c", "import requests; r=requests.get('http://localhost:8000/', timeout=5); exit(0 if r.status_code==200 else 1)"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s       # Increased for models with longer loading times
       retries: 3
-      start_period: 30s # Give more time for model loading
+      start_period: 90s  # More time for initial model loading
     networks:
       - raptor-net # Updated network name
 
   # 2. Define the CPU service extending the base
-  progressive-summarizer-raptor-cpu:
+  cpu:
     extends:
       service: base-service
-    container_name: progressive-summarizer-raptor-cpu # Updated container name
+    container_name: cpu # Updated container name
     profiles:
       - cpu
     ports:
       - "${APP_PORT:-8000}:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 12G        # Maximum memory limit
+          cpus: '8'          # Maximum CPU cores
+        reservations:
+          memory: 6G         # Minimum reserved memory
+          cpus: '4'          # Minimum reserved CPU cores
 
   # 3. Define the GPU service extending the base
-  progressive-summarizer-raptor-gpu:
+  gpu:
     extends:
       service: base-service
-    container_name: progressive-summarizer-raptor-gpu # Updated container name
+    container_name: gpu # Updated container name
     profiles:
       - gpu
     ports:
       - "${APP_PORT:-8000}:8000"
     deploy:
       resources:
+        limits:
+          memory: 12G        # Maximum memory limit
+          cpus: '8'          # Maximum CPU cores
         reservations:
+          memory: 6G         # Minimum reserved memory
+          cpus: '4'          # Minimum reserved CPU cores
           devices:
             - driver: nvidia
               count: 1 # Request 1 GPU
               capabilities: [ gpu ] # Changed capability for broader compatibility
+
+  # 4. Define the OLLAMA service
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=http://cpu,http://gpu
+
+      # GPU configuration
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_DISABLE_REQUIRE=1
+
+      # Model performance configuration
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_GPU_LAYERS=-1
+      - OLLAMA_CONTEXT_SIZE=6144
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_BATCH_SIZE=256
+
+      - OLLAMA_MODELS=/root/.ollama
+      - OLLAMA_KEEP_ALIVE=-1
+      - OLLAMA_LOAD_TIMEOUT=10m
+      - OLLAMA_DEBUG=false
+      - OLLAMA_VERBOSE=false
+
+      # Advanced configurations
+      - OLLAMA_NUM_THREAD=0
+      - OLLAMA_REQUEST_TIMEOUT=120
+      - OLLAMA_MAX_MODEL_SIZE=15000000000
+      - OLLAMA_TELEMETRY=false
+      - OLLAMA_SCHED_SPREAD=false
+    volumes:
+      - ollama_models:/root/.ollama
+      - ollama_cache:/tmp/ollama_cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    networks:
+      - raptor-net
 
 volumes:
   raptor_models: # Updated volume names
@@ -67,6 +142,10 @@ volumes:
       o: bind
       # Mounts the 'logs' folder from the project root
       device: ../logs
+  ollama_models:
+    driver: local
+  ollama_cache:
+    driver: local
 
 networks:
   raptor-net: # Updated network name

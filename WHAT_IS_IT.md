@@ -1,6 +1,9 @@
+
+![What is it?](what-is-it.jpg)
+
 # Technical Deep Dive: How RAPTOR Works
 
-The Progressive-Summarizer-RAPTOR (Recursive API for Progressive Text Organization and Refinement) is an innovative text summarization system that progressively refines document summaries through multiple passes, preserving core meaning while significantly reducing text length.
+The Progressive-Summarizer-RAPTOR (Recursive API for Progressive Text Organization and Refinement) is an innovative text summarization system that creates hierarchical summaries through recursive refinement. It condenses documents while preserving essential information across multiple levels of abstraction, enabling users to navigate between different levels of detail seamlessly.
 
 ## Core Concepts
 
@@ -44,17 +47,21 @@ The embedding model management system:
 
 The core summarization flow consists of several stages:
 
-1. **Text Segmentation**: Breaking input text into manageable chunks
-2. **Embedding Generation**: Converting each segment to vector representation
-3. **Initial Summarization**: Creating a first-level summary using LLM processing
-4. **Recursive Refinement**: Feeding summaries back through the pipeline for further condensation
-5. **Progress Tracking**: Monitoring the reduction in text length while ensuring information preservation
+1. **Input Processing**: Accepting JSON documents with text chunks through the `/raptor/` endpoint
+2. **Embedding Generation**: Converting each segment to vector representation using sentence transformers
+3. **Semantic Clustering (Level 1)**: Grouping semantically related segments through dimensionality reduction and clustering
+4. **Initial Summarization**: Creating first-level summaries for each cluster using the LLM
+5. **Recursive Clustering (Level 2)**: Clustering Level 1 summaries to identify higher-level relationships
+6. **Intermediate Summarization**: Generating second-level summaries from Level 2 clusters
+7. **Final Consolidation (Level 3)**: Combining Level 2 summaries to create a comprehensive final summary
+8. **Token Optimization**: Ensuring summaries stay within configurable token limits
+9. **Hierarchical Output**: Returning all three levels with detailed metadata
 
 ### 4. LLM Integration
 
-RAPTOR connects with Ollama for LLM capabilities, making use of template-based prompting to guide the summarization process. The system uses environment variables like `OLLAMA_API_URL` to configure the LLM endpoint, making deployment flexible across different environments.
+RAPTOR connects with Ollama for LLM capabilities, making use of template-based prompting to guide the summarization process. The system uses environment variables like `OLLAMA_BASE_URL` to configure the LLM endpoint, making deployment flexible across different environments.
 
-The summarization prompts are designed to produce consistent, high-quality outputs, with careful attention to template string formatting to ensure proper content insertion at runtime.
+The summarization prompts are designed to produce consistent, high-quality outputs, with careful attention to template string formatting to ensure proper content insertion at runtime. The system supports custom prompt templates through the API, allowing users to tailor the summarization process to specific domains or requirements.
 
 ## Implementation Details
 
@@ -71,22 +78,33 @@ The summarization prompts are designed to produce consistent, high-quality outpu
    - Implements batching for efficient processing of large documents
 
 3. **Summary Generation**
-   - Uses carefully crafted template strings rather than f-strings for proper runtime evaluation
+   - Uses carefully crafted template strings with placeholders for proper runtime evaluation
    - Contextual prompts guide the LLM to maintain document focus
-   - Multi-pass processing with feedback loops for quality control
+   - Three-level hierarchical summarization process with progressive refinement
+   - Token optimization to stay within configurable limits
 
 4. **API Endpoints**
-   - Clear, RESTful design patterns
-   - Comprehensive error handling
+   - Primary POST `/raptor/` endpoint for document processing
+   - Health check GET `/` endpoint for service status
+   - RESTful design with comprehensive parameter validation
    - Stateless architecture for scalability
 
 ### Configuration and Environment
 
 RAPTOR is designed for flexible deployment with configuration via environment variables:
 
-- `OLLAMA_API_URL`: Configures the endpoint for LLM services
-- `LOG_LEVEL`: Controls logging verbosity
-- Containerization with Docker for consistent deployment across environments
+- `OLLAMA_BASE_URL`: Configures the endpoint for LLM services (default: http://localhost:11434)
+- `LOG_LEVEL`: Controls logging verbosity **(Docker only – not consumed by the Python code)**
+- `LLM_MODEL`: Override the default LLM model (`gemma3:4b`) used for summarization
+- `EMBEDDER_MODEL`: Override the default embedding model (`sentence-transformers/all-MiniLM-L6-v2`)
+- `TEMPERATURE`: Override the default sampling temperature (0.3)
+- `CONTEXT_WINDOW`: Override the default LLM context window (18432)
+- `RANDOM_SEED`: Set the random seed for reproducibility (default: 224)
+- `MAX_WORKERS`: Number of parallel threads used for processing (default: 75 % of available CPU cores)
+
+**Note:** The following variables are for Docker configuration only and do not affect the Python code.
+
+The system supports both local deployment with Uvicorn and containerized deployment with Docker and docker-compose, with separate profiles for CPU and GPU environments.
 
 ## Performance Considerations
 
@@ -96,11 +114,27 @@ RAPTOR is designed for flexible deployment with configuration via environment va
 - Batched processing where appropriate
 - Parallel execution of independent tasks
 
-### Scaling Strategies
-
 - The stateless API design allows for horizontal scaling
 - Docker configurations for both CPU and GPU environments
 - Resource-aware processing adapts to available hardware
+
+## API Usage
+
+### Key Parameters
+
+- `llm_model`: LLM model to use for summarization (default: gemma3:4b)
+- `embedder_model`: Model for generating embeddings (default: sentence-transformers/all-MiniLM-L6-v2)
+- `threshold_tokens`: Maximum token limit for summaries
+- `temperature`: Controls randomness in LLM output (default: 0.3)
+- `context_window`: Maximum context window size for LLM (default: 18432)
+- `custom_prompt`: Optional custom prompt template for summarization
+
+### Response Structure
+
+The API returns a JSON structure containing:
+
+- `chunks`: Array of summary objects with text, token count, cluster level, and ID
+- `metadata`: Detailed processing information including input counts, cluster counts per level, reduction ratio, model names, and processing times
 
 ## Future Directions
 

@@ -11,6 +11,9 @@ import warnings
 import torch
 import tiktoken
 import requests
+import os
+import threading
+import gc
 from typing import List, Dict, Optional, Tuple, Union
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -34,7 +37,7 @@ class Settings(BaseSettings):
 
     # Model settings
     llm_model: str = "gemma3:4b"
-    embedder_model: str = "BAAI/bge-m3"
+    embedder_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # Generation settings
     temperature: float = 0.3
@@ -50,9 +53,8 @@ class Settings(BaseSettings):
     allowed_extensions: set = {"json"}
 
     class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
     @property
     def ollama_api_generate_url(self) -> str:
@@ -96,7 +98,6 @@ PROMPT_TEMPLATE = """
     - Preserve technical terms, numbers, and data points exactly as in the original.
     - Maintain the chronological flow and causal relationships present in the text.
     - Use only information explicitly stated in the text.
-    - Use the same language as the original text.
 
     2. FORMATTING:
     - Write as a cohesive narrative using neutral, objective language.
@@ -111,14 +112,18 @@ PROMPT_TEMPLATE = """
     - Redundant or repetitive information.
     - Introductory or concluding phrases (e.g., "Here’s a concise, objective summary of the provided text").
 
-    If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.
+    If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.   
 
     Text:
     ------------------------------------------------------------------------------------------
+    <text_to_summarize>
     {}
+    </text_to_summarize>
     ------------------------------------------------------------------------------------------
-    
-    Begin your response immediately with the summary content.
+
+    IMPORTANT:
+    - Begin your response immediately with the summary content.
+    - Use the same language as the original text.
     """
 
 # Use the settings property for Ollama URL
@@ -429,13 +434,32 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Optional cleanup.
-    logger.info("Application shutting down.")
-    embedder_model = get_settings().embedder_model
-    if embedder_model in _model_cache:
-        del _model_cache[embedder_model]
+    # Comprehensive cleanup on shutdown
+    logger.info("Application shutting down, cleaning up resources...")
+    try:
+        with _model_lock:
+            # Clean up all models in the cache
+            for model_name in list(_model_cache.keys()):
+                if model_name in _model_cache:
+                    logger.info(
+                        f"Removing model {model_name} from cache during shutdown"
+                    )
+                    del _model_cache[model_name]
+
+            # Clear the last used tracking dictionary
+            _model_last_used.clear()
+            logger.info("Model cache and tracking dictionaries cleared")
+
+        # Clean up GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            gc.collect()
+            logger.info(
+                f"GPU memory cleaned up. Current usage: {torch.cuda.memory_allocated() / (1024 * 1024):.2f} MB"
+            )
+    except Exception as e:
+        logger.error(f"Error during shutdown cleanup: {str(e)}")
+        # Don't re-raise the exception to avoid blocking shutdown
 
 
 # Initialize FastAPI app.
@@ -486,6 +510,11 @@ logger.addHandler(file_handler)
 
 # Create a singleton for model caching.
 _model_cache = {}
+_model_last_used = {}  # Track when each model was last used
+_model_lock = threading.RLock()  # Thread-safe lock for model cache
+
+# Cache timeout in seconds (1 hour)
+MODEL_CACHE_TIMEOUT = int(os.environ.get("MODEL_CACHE_TIMEOUT", 3600))
 
 # Set random seed.
 random.seed(get_settings().random_seed)
@@ -499,28 +528,138 @@ def _get_model(model_name: str) -> SentenceTransformer:
 
     Returns:
         SentenceTransformer: The loaded model instance.
+
+    Raises:
+        ValueError: If model_name is None or empty.
+        RuntimeError: If there's an error loading the model from disk or downloading it.
+        Exception: For any other unexpected errors during model loading.
     """
-    if model_name not in _model_cache:
-        # Create models directory if it doesn't exist.
-        models_dir = Path("models")
-        models_dir.mkdir(exist_ok=True)
+    if not model_name:
+        error_msg = "Model name cannot be None or empty"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
-        # Local path for the model.
-        local_model_path = models_dir / model_name.replace("/", "_")
+    current_time = time.time()
+    logger.debug(f"Requesting model: {model_name}")
 
-        if local_model_path.exists():
-            # Load from local storage.
-            logger.info(f"Loading model from local storage: {local_model_path}")
-            _model_cache[model_name] = SentenceTransformer(str(local_model_path))
+    # Track memory usage before any operations
+    if torch.cuda.is_available():
+        before_mem = torch.cuda.memory_allocated() / (1024 * 1024)
+        logger.debug(f"GPU memory before model operations: {before_mem:.2f} MB")
+
+    with _model_lock:
+        logger.debug(f"Acquired lock for model operations: {model_name}")
+        # Check for expired models and remove them
+        expired_count = 0
+        for name, last_used in list(_model_last_used.items()):
+            if current_time - last_used > MODEL_CACHE_TIMEOUT:
+                if name in _model_cache:
+                    unused_minutes = int((current_time - last_used) / 60)
+                    logger.info(
+                        f"Removing expired model {name} from cache (unused for {unused_minutes} minutes)"
+                    )
+                    try:
+                        del _model_cache[name]
+                        del _model_last_used[name]
+                        expired_count += 1
+                        # Clean up GPU memory
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            gc.collect()
+                            after_mem = torch.cuda.memory_allocated() / (1024 * 1024)
+                            logger.info(f"GPU memory after cleanup: {after_mem:.2f} MB")
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            f"Error during expired model cleanup for {name}: {str(cleanup_error)}"
+                        )
+
+        if expired_count > 0:
+            logger.info(f"Removed {expired_count} expired models from cache")
+
+        # Load model if not in cache
+        if model_name not in _model_cache:
+            logger.info(f"Model {model_name} not found in cache, loading...")
+            try:
+                # Create models directory if it doesn't exist.
+                models_dir = Path("models")
+                models_dir.mkdir(exist_ok=True)
+
+                # Local path for the model.
+                local_model_path = models_dir / model_name.replace("/", "_")
+
+                if local_model_path.exists():
+                    # Load from local storage.
+                    logger.info(f"Loading model from local storage: {local_model_path}")
+                    start_time = time.time()
+                    _model_cache[model_name] = SentenceTransformer(
+                        str(local_model_path)
+                    )
+                    load_time = time.time() - start_time
+                    logger.info(
+                        f"Model {model_name} loaded from disk in {load_time:.2f} seconds"
+                    )
+                else:
+                    # Download and save model.
+                    logger.info(
+                        f"Downloading model {model_name} and saving to {local_model_path}"
+                    )
+                    start_time = time.time()
+                    _model_cache[model_name] = SentenceTransformer(model_name)
+                    download_time = time.time() - start_time
+
+                    logger.info(
+                        f"Model {model_name} downloaded in {download_time:.2f} seconds, saving to disk..."
+                    )
+                    save_start = time.time()
+                    _model_cache[model_name].save(str(local_model_path))
+                    save_time = time.time() - save_start
+                    logger.info(
+                        f"Model {model_name} saved to disk in {save_time:.2f} seconds"
+                    )
+
+                # Log model size information
+                model_size = sum(
+                    p.numel() * p.element_size()
+                    for p in _model_cache[model_name].parameters()
+                ) / (1024 * 1024)
+                logger.info(
+                    f"Model {model_name} loaded, approximate size: {model_size:.2f} MB"
+                )
+
+            except FileNotFoundError as e:
+                error_msg = f"Model directory not accessible: {str(e)}"
+                logger.error(error_msg)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                raise RuntimeError(error_msg) from e
+            except (OSError, IOError) as e:
+                error_msg = f"I/O error loading model {model_name}: {str(e)}"
+                logger.error(error_msg)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                raise RuntimeError(error_msg) from e
+            except Exception as e:
+                error_msg = f"Unexpected error loading model {model_name}: {str(e)}"
+                logger.error(error_msg)
+                # Try to clean up memory in case of error
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    gc.collect()
+                    logger.info("GPU memory cleaned up after model loading error")
+                raise
         else:
-            # Download and save model.
-            logger.info(
-                f"Downloading model {model_name} and saving to {local_model_path}"
-            )
-            _model_cache[model_name] = SentenceTransformer(model_name)
-            _model_cache[model_name].save(str(local_model_path))
+            logger.debug(f"Model {model_name} found in cache")
 
-    return _model_cache[model_name]
+        # Update last used timestamp
+        _model_last_used[model_name] = current_time
+        logger.debug(f"Updated last used timestamp for {model_name}")
+
+        # Log current cache status
+        logger.debug(f"Current model cache size: {len(_model_cache)} models")
+
+        return _model_cache[model_name]
 
 
 def generate_summary(
@@ -682,6 +821,24 @@ def get_embeddings(
     Raises:
         HTTPException: If there's an error during the embedding process.
     """
+    # Use settings model if none provided
+    if model is None:
+        model = get_settings().embedder_model
+
+    # Adjust batch size dynamically based on document size
+    adjusted_batch_size = batch_size
+    if len(chunks) > 1000:
+        adjusted_batch_size = max(1, batch_size // 2)
+        logger.info(
+            f"Large document detected ({len(chunks)} chunks), reducing batch size to {adjusted_batch_size}"
+        )
+
+    # Log memory usage before processing if GPU is available
+    if torch.cuda.is_available():
+        before_mem = torch.cuda.memory_allocated() / (1024 * 1024)
+        logger.info(f"GPU memory usage before embedding: {before_mem:.2f} MB")
+
+    model_instance = None
     try:
         # Get model from cache (loads from disk if not in RAM).
         model_instance = _get_model(model)
@@ -690,20 +847,14 @@ def get_embeddings(
         if torch.cuda.is_available():
             model_instance = model_instance.to("cuda")
 
-        # Get embeddings.
+        # Get embeddings with adjusted batch size.
         embeddings = model_instance.encode(
             chunks,
-            batch_size=batch_size,
+            batch_size=adjusted_batch_size,
             show_progress_bar=show_progress_bar,
             convert_to_numpy=convert_to_numpy,
             normalize_embeddings=normalize_embeddings,
         )
-
-        # Cleanup GPU memory but keep model in RAM.
-        if torch.cuda.is_available():
-            model_instance.cpu()
-            torch.cuda.empty_cache()
-            logger.info("GPU memory cleared after embeddings generation")
 
         return embeddings
 
@@ -713,6 +864,20 @@ def get_embeddings(
             status_code=500,
             detail=f"Error generating embeddings: {str(e)}",
         )
+    finally:
+        # Always clean up GPU memory in finally block to ensure it runs
+        if torch.cuda.is_available() and model_instance is not None:
+            try:
+                model_instance.cpu()
+                torch.cuda.empty_cache()
+                gc.collect()
+
+                # Log memory usage after cleanup
+                after_mem = torch.cuda.memory_allocated() / (1024 * 1024)
+                logger.info(f"GPU memory usage after cleanup: {after_mem:.2f} MB")
+                logger.info("GPU memory cleared after embeddings processing")
+            except Exception as cleanup_error:
+                logger.warning(f"Error during GPU memory cleanup: {str(cleanup_error)}")
 
 
 def _global_cluster_embeddings(
