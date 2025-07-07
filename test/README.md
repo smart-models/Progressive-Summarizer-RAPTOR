@@ -7,31 +7,37 @@ This directory contains tests for the Progressive-Summarizer-RAPTOR API.
 - `test_api.py`: Main test file that tests API endpoints functionality
 - `pytest.ini`: Configuration file for pytest
 - `test_data/`: Directory for sample text files used in tests
+  - `alice_in_wonderland.json`: Required test data file
 - `models/`: Directory where test embedding models can be cached
 - `logs/`: Directory for test-specific logs
 
 ## Running Tests
 
-To run the tests, execute the following command from the project root:
+To run the tests, execute the following command from the project root directory:
 
 ```bash
-python -m pytest test/test_api.py -v
+python -m pytest test/test_api.py -v -s
 ```
 
-## Test Coverage
+## Current Test Coverage
 
-The test suite covers:
+The test suite currently includes:
 
-1. **Health Endpoint Test**: Verifies that the API is running and healthy
-2. **Text Summarization Test**: Tests the direct text summarization endpoint
-3. **File Summarization Test**: Tests the ability to upload and summarize a file
+1. **File Summarization Test (`test_alice_file_processing`)**: 
+   - Tests the `/raptor/` endpoint with a JSON file upload
+   - Validates the response structure including chunks and metadata
+   - Verifies correct clustering across three levels
+   - Checks token counts, reduction ratios, and processing times
+   
 
 ## Test Dependencies
 
 Tests require:
 - pytest
 - FastAPI TestClient
-- An active Ollama instance (defaults to http://localhost:11434/api/generate)
+- An active Ollama instance (defaults to http://localhost:11434)
+- The `alice_in_wonderland.json` test file in the `test_data/` directory
+- Gemma3:4b model available in Ollama
 
 ## Adding New Tests
 

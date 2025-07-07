@@ -8,7 +8,7 @@
 
 Progressive-Summarizer-RAPTOR (Recursive API for Progressive Text Organization and Refinement) is an advanced text summarization system that creates hierarchical summaries through recursive refinement. It condenses documents while preserving essential information across multiple levels of abstraction, enabling users to navigate between different levels of detail seamlessly.
 
-Based on the paper https://arxiv.org/abs/2401.18059, this innovative solution leverages state-of-the-art embedding models and Large Language Models (LLMs) to understand semantic relationships within text, producing summaries that maintain coherence while achieving significant compression ratios. Unlike traditional single-pass summarization tools, RAPTOR creates a progressive hierarchy where each level provides increasingly condensed versions of the original content.
+Based on the paper https://arxiv.org/abs/2401.18059 and the code from https://github.com/run-llama/llama_index/tree/main/llama-index-packs/llama-index-packs-raptor, this innovative solution leverages state-of-the-art embedding models and Large Language Models (LLMs) to understand semantic relationships within text, producing summaries that maintain coherence while achieving significant compression ratios. Unlike traditional single-pass summarization tools, RAPTOR creates a progressive hierarchy where each level provides increasingly condensed versions of the original content.
 
 The system is designed for production environments, offering a robust REST API, Docker support, and intelligent resource management. Whether you're processing research papers, technical documentation, or business reports, RAPTOR provides a scalable solution for extracting key insights at various levels of detail.
 
