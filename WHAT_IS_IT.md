@@ -3,7 +3,7 @@
 
 # Technical Deep Dive: How RAPTOR Works
 
-The Progressive-Summarizer-RAPTOR (Recursive API for Progressive Text Organization and Refinement) is an innovative text summarization system that creates hierarchical summaries through recursive refinement. It condenses documents while preserving essential information across multiple levels of abstraction, enabling users to navigate between different levels of detail seamlessly.
+The Progressive Summarizer RAPTOR (Recursive API for Progressive Text Organization and Refinement) is an innovative text summarization system that creates hierarchical summaries through recursive refinement. It condenses documents while preserving essential information across multiple levels of abstraction, enabling users to navigate between different levels of detail seamlessly.
 
 ## Core Concepts
 
