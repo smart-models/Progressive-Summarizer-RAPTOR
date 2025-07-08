@@ -4,6 +4,8 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-blue)
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 
+![Normalized Semantic Chunker](logo.png)
+
 # Progressive-Summarizer-RAPTOR
 
 Progressive-Summarizer-RAPTOR (Recursive API for Progressive Text Organization and Refinement) is an advanced text summarization system that creates hierarchical summaries through recursive refinement. It condenses documents while preserving essential information across multiple levels of abstraction, enabling users to navigate between different levels of detail seamlessly.
