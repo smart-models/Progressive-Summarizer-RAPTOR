@@ -515,7 +515,7 @@ PROMPT_TEMPLATE = """
     Text:
     ------------------------------------------------------------------------------------------
     <text_to_summarize>
-    {}
+    {chunk}
     </text_to_summarize>
     ------------------------------------------------------------------------------------------
 
@@ -527,7 +527,7 @@ PROMPT_TEMPLATE = """
 
 ### Important Note When Creating Custom Prompts
 
-When creating your own custom prompt template, you **must** include the placeholder `{}` within `<text_to_summarize>` tags as shown above. This placeholder will be replaced with the actual text to be summarized.
+When creating your own custom prompt template, you **must** include the placeholder `{chunk}` within `<text_to_summarize>` tags as shown above. This placeholder will be replaced with the actual text to be summarized.
 
 Failure to include the proper placeholder format will cause the summarization process to fail.
 

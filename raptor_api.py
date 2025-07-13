@@ -117,7 +117,7 @@ PROMPT_TEMPLATE = """
     Text:
     ------------------------------------------------------------------------------------------
     <text_to_summarize>
-    {}
+    {chunk}
     </text_to_summarize>
     ------------------------------------------------------------------------------------------
 
@@ -696,7 +696,7 @@ def generate_summary(
     api_url = settings.ollama_api_generate_url
 
     # Format the prompt with the actual chunk content.
-    formatted_prompt = prompt.format(chunk)
+    formatted_prompt = prompt.format(chunk=chunk)
 
     headers = {"Content-Type": "application/json"}
     data = {
