@@ -300,9 +300,9 @@ If you're using the local installation method with Uvicorn, you **must set up Ol
    ollama serve
    ```
 
-3. **Pull required model** (default: gemma3:4b):
+3. **Pull required model** (default: qwen2.5:7b):
    ```bash
-   ollama pull gemma3:4b
+   ollama pull qwen2.5:7b
    ```
 
 The RAPTOR API will connect to Ollama at `http://localhost:11434` by default. You can change this by setting the `OLLAMA_BASE_URL` environment variable.
@@ -316,8 +316,8 @@ The RAPTOR API will connect to Ollama at `http://localhost:11434` by default. Yo
   
   **Parameters:**
   - `file`: JSON file containing text chunks to be summarized
-  - `llm_model`: LLM model to use for summarization (string, default: "gemma3:4b")
-  - `embedder_model`: Model to use for generating embeddings (string, default: "sentence-transformers/all-MiniLM-L6-v2")
+  - `llm_model`: LLM model to use for summarization (string, default: "qwen2.5:7b")
+  - `embedder_model`: Model to use for generating embeddings (string, default: "BAAI/bge-m3")
   - `threshold_tokens`: Maximum token limit for summaries (integer, optional)
   - `temperature`: Controls randomness in LLM output (float, default: 0.3)
   - `context_window`: Maximum context window size for LLM (integer, default: 18432)
@@ -352,7 +352,7 @@ curl -X POST "http://localhost:8000/raptor/" \
   -H "accept: application/json"
 
 # With custom parameters
-curl -X POST "http://localhost:8000/raptor/?llm_model=gemma3:4b&temperature=0.2&threshold_tokens=4000" \
+curl -X POST "http://localhost:8000/raptor/?llm_model=qwen2.5:7b&temperature=0.2&threshold_tokens=4000" \
   -F "file=@document.json" \
   -H "accept: application/json"
 ```
@@ -383,7 +383,7 @@ try:
     with open(file_path, 'rb') as f:
         files = {'file': (file_path, f, 'application/json')}
         params = {
-            'llm_model': 'gemma3:4b',
+            'llm_model': 'qwen2.5:7b',
             'temperature': 0.3,
             'threshold_tokens': 4000
         }
@@ -489,7 +489,7 @@ Below is the default prompt template used by RAPTOR. You can use this as a start
 ```python
 PROMPT_TEMPLATE = """
     Act as an expert technical writer specializing in creating concise, accurate, and objective summaries.
-    Summarize the following text (delimited by lines containing only dashes) according to these guidelines:
+    Summarize the following text (delimited by lines containing only dashes and tags) according to these guidelines:
 
     1. CORE REQUIREMENTS:
     - Extract all key facts, arguments, and essential details.
@@ -508,20 +508,19 @@ PROMPT_TEMPLATE = """
     - Personal interpretations or external knowledge.
     - Bullet points or lists.
     - Redundant or repetitive information.
-    - Introductory or concluding phrases (e.g., "Here's a concise, objective summary of the provided text").
+    - Introductory or concluding phrases (e.g., "Here’s a concise, objective summary of the provided text").
 
-    If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.   
+    4. MUST HAVE:
+    - Begin your response immediately with the summary content.
+    - Use the same language as the original text.
+    - If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.   
 
     Text:
     ------------------------------------------------------------------------------------------
     <text_to_summarize>
     {chunk}
     </text_to_summarize>
-    ------------------------------------------------------------------------------------------
-
-    IMPORTANT:
-    - Begin your response immediately with the summary content.
-    - Use the same language as the original text.
+    ------------------------------------------------------------------------------------------   
     """
 ```
 

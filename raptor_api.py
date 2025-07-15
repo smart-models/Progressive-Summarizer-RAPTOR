@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
 
     # Model settings
-    llm_model: str = "gemma3:4b"
-    embedder_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    llm_model: str = "qwen2.5:7b"
+    embedder_model: str = "BAAI/bge-m3"
 
     # Generation settings
     temperature: float = 0.3
@@ -91,7 +91,7 @@ def get_settings():
 # Define prompt template for summarization
 PROMPT_TEMPLATE = """
     Act as an expert technical writer specializing in creating concise, accurate, and objective summaries.
-    Summarize the following text (delimited by lines containing only dashes) according to these guidelines:
+    Summarize the following text (delimited by lines containing only dashes and tags) according to these guidelines:
 
     1. CORE REQUIREMENTS:
     - Extract all key facts, arguments, and essential details.
@@ -106,24 +106,23 @@ PROMPT_TEMPLATE = """
     - Ensure clarity and readability throughout.
 
     3. AVOID:
+    - Introductory phrases (e.g., "Here's a concise, objective summary of the provided text, adhering to all specified guidelines:").
     - Meta-references (e.g., "this text discusses").
     - Personal interpretations or external knowledge.
     - Bullet points or lists.
     - Redundant or repetitive information.
-    - Introductory or concluding phrases (e.g., "Here’s a concise, objective summary of the provided text").
 
-    If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.   
+    4. MUST HAVE:
+    - Begin your response immediately.
+    - Use the same language as the original text.
+    - If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.   
 
     Text:
     ------------------------------------------------------------------------------------------
     <text_to_summarize>
     {chunk}
     </text_to_summarize>
-    ------------------------------------------------------------------------------------------
-
-    IMPORTANT:
-    - Begin your response immediately with the summary content.
-    - Use the same language as the original text.
+    ------------------------------------------------------------------------------------------   
     """
 
 # Use the settings property for Ollama URL
