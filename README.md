@@ -530,6 +530,10 @@ When creating your own custom prompt template, you **must** include the placehol
 
 Failure to include the proper placeholder format will cause the summarization process to fail.
 
+### Important Note about LLM models with thinking abilities
+
+By default, thinking abilities are disabled in the RAPTOR API. When using models with chain-of-thought capabilities, the `think` parameter is set to `False` in API requests to Ollama.
+
 ## Contributing
 
 Progressive-Summarizer-RAPTOR is an open-source project that welcomes contributions from the community. Your involvement helps make the tool better for everyone.

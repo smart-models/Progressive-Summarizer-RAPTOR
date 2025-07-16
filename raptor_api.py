@@ -703,6 +703,7 @@ def generate_summary(
         "prompt": formatted_prompt,
         "temperature": temperature,
         "options": {"num_ctx": context_window},
+        "think": False,
     }
 
     # Retry configuration.
