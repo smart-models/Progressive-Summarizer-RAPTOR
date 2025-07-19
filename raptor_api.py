@@ -36,12 +36,12 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
 
     # Model settings
-    llm_model: str = "qwen2.5:7b"
+    llm_model: str = "qwen2.5:7b-instruct"
     embedder_model: str = "BAAI/bge-m3"
 
     # Generation settings
-    temperature: float = 0.3
-    context_window: int = 18432
+    temperature: float = 0.1
+    context_window: int = 25600
 
     # Performance settings
     random_seed: int = 224

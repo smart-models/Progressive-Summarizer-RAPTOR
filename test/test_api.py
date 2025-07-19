@@ -47,10 +47,10 @@ def test_alice_file_processing(client):
             "/raptor/",
             files={"file": ("alice_in_wonderland.json", f, "application/json")},
             params={
-                "llm_model": "gemma3:4b",
+                "llm_model": "qwen2.5:7b-instruct",
                 "embedder_model": "sentence-transformers/all-MiniLM-L6-v2",
-                "temperature": 0.3,
-                "context_window": 18432,
+                "temperature": 0.1,
+                "context_window": 25600,
             },
         )
 

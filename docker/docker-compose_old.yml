@@ -15,6 +15,7 @@ services:
       # Existing environment variables
       - TOKENIZERS_PARALLELISM=false
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       
       # Cache and Threading Optimizations
       - MODEL_CACHE_TIMEOUT=${MODEL_CACHE_TIMEOUT:-3600}
@@ -47,8 +48,6 @@ services:
       - cpu
     ports:
       - "${APP_PORT:-8000}:8000"
-    environment:
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama-cpu:11434}
     deploy:
       resources:
         limits:
@@ -57,8 +56,6 @@ services:
         reservations:
           memory: 6G         # Minimum reserved memory
           cpus: '4'          # Minimum reserved CPU cores
-    depends_on:
-      - ollama-cpu
 
   # 3. Define the GPU service extending the base
   gpu:
@@ -69,8 +66,6 @@ services:
       - gpu
     ports:
       - "${APP_PORT:-8000}:8000"
-    environment:
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama-gpu:11434}
     deploy:
       resources:
         limits:
@@ -83,66 +78,15 @@ services:
             - driver: nvidia
               count: 1 # Request 1 GPU
               capabilities: [ gpu ] # Changed capability for broader compatibility
-    depends_on:
-      - ollama-gpu
 
-  # 4. Define the OLLAMA CPU service
-  ollama-cpu:
+  # 4. Define the OLLAMA service
+  ollama:
     image: ollama/ollama:latest
-    container_name: ollama-cpu
-    profiles:
-      - cpu
+    container_name: ollama
     restart: unless-stopped
     environment:
       - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_ORIGINS=http://cpu
-
-      # CPU optimized configuration
-      - OLLAMA_FLASH_ATTENTION=0
-      - OLLAMA_GPU_LAYERS=0
-      - OLLAMA_CONTEXT_SIZE=4096
-      - OLLAMA_NUM_PARALLEL=1
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_BATCH_SIZE=128
-
-      - OLLAMA_MODELS=/root/.ollama
-      - OLLAMA_KEEP_ALIVE=-1
-      - OLLAMA_LOAD_TIMEOUT=15m
-      - OLLAMA_DEBUG=false
-      - OLLAMA_VERBOSE=false
-
-      # Advanced configurations for CPU
-      - OLLAMA_NUM_THREAD=0
-      - OLLAMA_REQUEST_TIMEOUT=300
-      - OLLAMA_MAX_MODEL_SIZE=8000000000
-      - OLLAMA_TELEMETRY=false
-      - OLLAMA_SCHED_SPREAD=false
-    volumes:
-      - ollama_models:/root/.ollama
-      - ollama_cache:/tmp/ollama_cache
-    ports:
-      - "11434:11434"
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-          cpus: '6'
-        reservations:
-          memory: 4G
-          cpus: '3'
-    networks:
-      - raptor-net
-
-  # 5. Define the OLLAMA GPU service
-  ollama-gpu:
-    image: ollama/ollama:latest
-    container_name: ollama-gpu
-    profiles:
-      - gpu
-    restart: unless-stopped
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_ORIGINS=http://gpu
+      - OLLAMA_ORIGINS=http://cpu,http://gpu
 
       # GPU configuration
       - NVIDIA_VISIBLE_DEVICES=0
@@ -150,7 +94,7 @@ services:
       - CUDA_VISIBLE_DEVICES=0
       - NVIDIA_DISABLE_REQUIRE=1
 
-      # GPU optimized configuration
+      # Model performance configuration
       - OLLAMA_FLASH_ATTENTION=1
       - OLLAMA_GPU_LAYERS=-1
       - OLLAMA_CONTEXT_SIZE=6144
@@ -173,8 +117,6 @@ services:
     volumes:
       - ollama_models:/root/.ollama
       - ollama_cache:/tmp/ollama_cache
-    ports:
-      - "11434:11434"
     deploy:
       resources:
         reservations:

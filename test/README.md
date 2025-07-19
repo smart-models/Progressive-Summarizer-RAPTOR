@@ -37,7 +37,7 @@ Tests require:
 - FastAPI TestClient
 - An active Ollama instance (defaults to http://localhost:11434)
 - The `alice_in_wonderland.json` test file in the `test_data/` directory
-- Gemma3:4b model available in Ollama
+- Qwen2.5:7b-instruct model available in Ollama
 
 ## Adding New Tests
 

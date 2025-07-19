@@ -95,10 +95,10 @@ RAPTOR is designed for flexible deployment with configuration via environment va
 
 - `OLLAMA_BASE_URL`: Configures the endpoint for LLM services (default: http://localhost:11434)
 - `LOG_LEVEL`: Controls logging verbosity **(Docker only – not consumed by the Python code)**
-- `LLM_MODEL`: Override the default LLM model (`gemma3:4b`) used for summarization
+- `LLM_MODEL`: Override the default LLM model (`qwen2.5:7b-instruct`) used for summarization
 - `EMBEDDER_MODEL`: Override the default embedding model (`sentence-transformers/all-MiniLM-L6-v2`)
-- `TEMPERATURE`: Override the default sampling temperature (0.3)
-- `CONTEXT_WINDOW`: Override the default LLM context window (18432)
+- `TEMPERATURE`: Override the default sampling temperature (0.1)
+- `CONTEXT_WINDOW`: Override the default LLM context window (25600)
 - `RANDOM_SEED`: Set the random seed for reproducibility (default: 224)
 - `MAX_WORKERS`: Number of parallel threads used for processing (default: 75 % of available CPU cores)
 
@@ -122,11 +122,11 @@ The system supports both local deployment with Uvicorn and containerized deploym
 
 ### Key Parameters
 
-- `llm_model`: LLM model to use for summarization (default: gemma3:4b)
+- `llm_model`: LLM model to use for summarization (default: qwen2.5:7b-instruct)
 - `embedder_model`: Model for generating embeddings (default: sentence-transformers/all-MiniLM-L6-v2)
 - `threshold_tokens`: Maximum token limit for summaries
-- `temperature`: Controls randomness in LLM output (default: 0.3)
-- `context_window`: Maximum context window size for LLM (default: 18432)
+- `temperature`: Controls randomness in LLM output (default: 0.1)
+- `context_window`: Maximum context window size for LLM (default: 25600)
 - `custom_prompt`: Optional custom prompt template for summarization
 
 ### Response Structure

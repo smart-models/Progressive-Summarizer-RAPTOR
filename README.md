@@ -319,8 +319,8 @@ The RAPTOR API will connect to Ollama at `http://localhost:11434` by default. Yo
   - `llm_model`: LLM model to use for summarization (string, default: "qwen2.5:7b")
   - `embedder_model`: Model to use for generating embeddings (string, default: "BAAI/bge-m3")
   - `threshold_tokens`: Maximum token limit for summaries (integer, optional)
-  - `temperature`: Controls randomness in LLM output (float, default: 0.3)
-  - `context_window`: Maximum context window size for LLM (integer, default: 18432)
+  - `temperature`: Controls randomness in LLM output (float, default: 0.1)
+  - `context_window`: Maximum context window size for LLM (integer, default: 25600)
   - `custom_prompt`: Optional custom prompt template for summarization (string, optional)
   
   **Expected JSON Input Format:**
@@ -446,10 +446,10 @@ A successful summarization returns a hierarchical structure:
     "level_3_clusters": 1,
     "total_clusters": 8,
     "reduction_ratio": 0.6,
-    "llm_model": "gemma3:4b",
+    "llm_model": "qwen2.5:7b-instruct",
     "embedder_model": "sentence-transformers/all-MiniLM-L6-v2",
-    "temperature": 0.3,
-    "context_window": 18432,
+    "temperature": 0.1,
+    "context_window": 25600,
     "custom_prompt_used": false,
     "processing_time": {
       "total": 45.2,
@@ -467,10 +467,10 @@ RAPTOR can be tuned through environment variables (for Docker deployments) or a 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OLLAMA_BASE_URL` | Base URL of the Ollama API server | `http://localhost:11434` |
-| `LLM_MODEL` | Default LLM model used for summarization | `gemma3:4b` |
+| `LLM_MODEL` | Default LLM model used for summarization | `qwen2.5:7b-instruct` |
 | `EMBEDDER_MODEL` | Sentence-Transformer model used for embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
-| `TEMPERATURE` | Sampling temperature for the LLM | `0.3` |
-| `CONTEXT_WINDOW` | Maximum token window supplied to the LLM | `18432` |
+| `TEMPERATURE` | Sampling temperature for the LLM | `0.1` |
+| `CONTEXT_WINDOW` | Maximum token window supplied to the LLM | `25600` |
 | `RANDOM_SEED` | Seed for deterministic operations | `224` |
 | `MAX_WORKERS` | Number of worker threads (absolute or percentage) | `75% of CPU cores` |
 | `MODEL_CACHE_TIMEOUT` | Seconds before an unused model is evicted from cache | `3600` |
