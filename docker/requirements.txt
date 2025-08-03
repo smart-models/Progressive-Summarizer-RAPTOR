@@ -3,8 +3,8 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.30.0
 sentence-transformers>=4.1.0 
 tiktoken>=0.5.2
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.1.1+cu121
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.6.0+cu126
 numpy<2.0.0,>=1.24.0
 pydantic>=2.5.0
 pydantic-settings>=2.0.0

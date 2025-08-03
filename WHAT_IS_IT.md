@@ -96,7 +96,7 @@ RAPTOR is designed for flexible deployment with configuration via environment va
 - `OLLAMA_BASE_URL`: Configures the endpoint for LLM services (default: http://localhost:11434)
 - `LOG_LEVEL`: Controls logging verbosity **(Docker only – not consumed by the Python code)**
 - `LLM_MODEL`: Override the default LLM model (`qwen2.5:7b-instruct`) used for summarization
-- `EMBEDDER_MODEL`: Override the default embedding model (`sentence-transformers/all-MiniLM-L6-v2`)
+- `EMBEDDER_MODEL`: Override the default embedding model (`BAAI/bge-m3`)
 - `TEMPERATURE`: Override the default sampling temperature (0.1)
 - `CONTEXT_WINDOW`: Override the default LLM context window (25600)
 - `RANDOM_SEED`: Set the random seed for reproducibility (default: 224)
@@ -123,7 +123,7 @@ The system supports both local deployment with Uvicorn and containerized deploym
 ### Key Parameters
 
 - `llm_model`: LLM model to use for summarization (default: qwen2.5:7b-instruct)
-- `embedder_model`: Model for generating embeddings (default: sentence-transformers/all-MiniLM-L6-v2)
+- `embedder_model`: Model for generating embeddings (default: BAAI/bge-m3)
 - `threshold_tokens`: Maximum token limit for summaries
 - `temperature`: Controls randomness in LLM output (default: 0.1)
 - `context_window`: Maximum context window size for LLM (default: 25600)
@@ -135,12 +135,3 @@ The API returns a JSON structure containing:
 
 - `chunks`: Array of summary objects with text, token count, cluster level, and ID
 - `metadata`: Detailed processing information including input counts, cluster counts per level, reduction ratio, model names, and processing times
-
-## Future Directions
-
-- Enhanced semantic preservation metrics
-- Multi-modal summarization capabilities
-- Comparison-based summarization for document sets
-- Custom fine-tuning options for domain-specific summarization
-
-By understanding how RAPTOR works at a technical level, developers can better integrate, extend, and optimize its capabilities for specific use cases and deployment scenarios.

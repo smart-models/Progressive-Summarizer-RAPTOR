@@ -1,10 +1,11 @@
 ![GPU Accelerated](https://img.shields.io/badge/GPU-Accelerated-green)
-![CUDA 12.1](https://img.shields.io/badge/CUDA-12.1-blue)
+![CUDA 12.6](https://img.shields.io/badge/CUDA-12.6-blue)
 ![Python 3.10](https://img.shields.io/badge/Python-3.10-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Latest-blue)
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+![Ollama](https://img.shields.io/badge/Ollama-Compatible-orange)
 
-![Normalized Semantic Chunker](logo.png)
+![Progressive Summarizer RAPTOR](logo.png)
 
 # Progressive Summarizer RAPTOR
 
@@ -300,9 +301,9 @@ If you're using the local installation method with Uvicorn, you **must set up Ol
    ollama serve
    ```
 
-3. **Pull required model** (default: qwen2.5:7b):
+3. **Pull required model** (default: qwen2.5:7b-instruct):
    ```bash
-   ollama pull qwen2.5:7b
+   ollama pull qwen2.5:7b-instruct
    ```
 
 The RAPTOR API will connect to Ollama at `http://localhost:11434` by default. You can change this by setting the `OLLAMA_BASE_URL` environment variable.
@@ -316,7 +317,7 @@ The RAPTOR API will connect to Ollama at `http://localhost:11434` by default. Yo
   
   **Parameters:**
   - `file`: JSON file containing text chunks to be summarized
-  - `llm_model`: LLM model to use for summarization (string, default: "qwen2.5:7b")
+  - `llm_model`: LLM model to use for summarization (string, default: "qwen2.5:7b-instruct")
   - `embedder_model`: Model to use for generating embeddings (string, default: "BAAI/bge-m3")
   - `threshold_tokens`: Maximum token limit for summaries (integer, optional)
   - `temperature`: Controls randomness in LLM output (float, default: 0.1)
@@ -352,7 +353,7 @@ curl -X POST "http://localhost:8000/raptor/" \
   -H "accept: application/json"
 
 # With custom parameters
-curl -X POST "http://localhost:8000/raptor/?llm_model=qwen2.5:7b&temperature=0.2&threshold_tokens=4000" \
+curl -X POST "http://localhost:8000/raptor/?llm_model=qwen2.5:7b-instruct&temperature=0.2&threshold_tokens=4000" \
   -F "file=@document.json" \
   -H "accept: application/json"
 ```
@@ -383,7 +384,7 @@ try:
     with open(file_path, 'rb') as f:
         files = {'file': (file_path, f, 'application/json')}
         params = {
-            'llm_model': 'qwen2.5:7b',
+            'llm_model': 'qwen2.5:7b-instruct',
             'temperature': 0.3,
             'threshold_tokens': 4000
         }
@@ -447,10 +448,11 @@ A successful summarization returns a hierarchical structure:
     "total_clusters": 8,
     "reduction_ratio": 0.6,
     "llm_model": "qwen2.5:7b-instruct",
-    "embedder_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedder_model": "BAAI/bge-m3",
     "temperature": 0.1,
     "context_window": 25600,
     "custom_prompt_used": false,
+    "source": "document.json",
     "processing_time": {
       "total": 45.2,
       "level_1": 20.5,
@@ -464,11 +466,12 @@ A successful summarization returns a hierarchical structure:
 
 RAPTOR can be tuned through environment variables (for Docker deployments) or a local `.env` file. The table below lists every variable consumed by the application together with its default value:
 
+### Core Application Variables
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OLLAMA_BASE_URL` | Base URL of the Ollama API server | `http://localhost:11434` |
+| `OLLAMA_BASE_URL` | Base URL of the Ollama API server | `http://localhost:11434` (CPU: `http://ollama-cpu:11434`, GPU: `http://ollama-gpu:11434` in Docker) |
 | `LLM_MODEL` | Default LLM model used for summarization | `qwen2.5:7b-instruct` |
-| `EMBEDDER_MODEL` | Sentence-Transformer model used for embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
+| `EMBEDDER_MODEL` | Sentence-Transformer model used for embeddings | `BAAI/bge-m3` |
 | `TEMPERATURE` | Sampling temperature for the LLM | `0.1` |
 | `CONTEXT_WINDOW` | Maximum token window supplied to the LLM | `25600` |
 | `RANDOM_SEED` | Seed for deterministic operations | `224` |
@@ -476,7 +479,20 @@ RAPTOR can be tuned through environment variables (for Docker deployments) or a 
 | `MODEL_CACHE_TIMEOUT` | Seconds before an unused model is evicted from cache | `3600` |
 | `LOG_LEVEL` | Logging verbosity (honoured by Docker, Python defaults to INFO) | `INFO` |
 
-`MODEL_CACHE_TIMEOUT` is read directly by the API (`raptor_api.py`, line 517) to control how long a model remains in the on-disk cache. The optional `LOG_LEVEL` variable is evaluated by the Docker start-up script; the Python code sets logging to `INFO` by default.
+### Docker-Specific Variables
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `APP_PORT` | Port for the RAPTOR API service | `8000` |
+| `TOKENIZERS_PARALLELISM` | Enable/disable tokenizers parallelism | `false` |
+| `OMP_NUM_THREADS` | OpenMP thread count | `4` |
+| `MKL_NUM_THREADS` | Intel MKL thread count | `4` |
+| `PYTORCH_CUDA_ALLOC_CONF` | PyTorch CUDA memory allocation configuration | `max_split_size_mb:512` |
+| `CUDA_LAUNCH_BLOCKING` | CUDA kernel launch blocking mode | `0` |
+| `CUDA_CACHE_DISABLE` | Disable CUDA cache | `0` |
+| `PYTHONUNBUFFERED` | Python output buffering | `1` |
+| `TORCH_CUDNN_V8_API_ENABLED` | Enable cuDNN v8 API | `1` |
+
+**Note**: `MODEL_CACHE_TIMEOUT` is read directly by the API (`raptor_api.py`, line 517) to control how long a model remains in the on-disk cache. The `LOG_LEVEL` variable is evaluated by the Docker start-up script; the Python code sets logging to `INFO` by default. Docker deployments use different `OLLAMA_BASE_URL` defaults depending on the profile (CPU/GPU).
 
 ## Custom Prompt Templates
 
@@ -504,14 +520,14 @@ PROMPT_TEMPLATE = """
     - Ensure clarity and readability throughout.
 
     3. AVOID:
+    - Introductory phrases (e.g., "Here's a concise, objective summary of the provided text, adhering to all specified guidelines:").
     - Meta-references (e.g., "this text discusses").
     - Personal interpretations or external knowledge.
     - Bullet points or lists.
     - Redundant or repetitive information.
-    - Introductory or concluding phrases (e.g., "Here’s a concise, objective summary of the provided text").
 
     4. MUST HAVE:
-    - Begin your response immediately with the summary content.
+    - Begin your response immediately.
     - Use the same language as the original text.
     - If the text is ambiguous or incomplete, summarize only what is clear and explicitly stated.   
 

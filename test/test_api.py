@@ -48,7 +48,7 @@ def test_alice_file_processing(client):
             files={"file": ("alice_in_wonderland.json", f, "application/json")},
             params={
                 "llm_model": "qwen2.5:7b-instruct",
-                "embedder_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "embedder_model": "BAAI/bge-m3",
                 "temperature": 0.1,
                 "context_window": 25600,
             },
@@ -85,6 +85,7 @@ def test_alice_file_processing(client):
         "temperature",
         "context_window",
         "custom_prompt_used",
+        "source",
         "processing_time",
     ]
 

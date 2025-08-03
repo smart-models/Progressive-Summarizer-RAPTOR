@@ -5,10 +5,10 @@ sentence-transformers>=4.1.0
 transformers>=4.36.0  
 accelerate>=0.25.0  
 tiktoken>=0.5.2
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.1.1+cu121
-torchvision==0.16.1+cu121
-torchaudio==2.1.1+cu121
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.6.0+cu126
+torchvision==0.21.0+cu126
+torchaudio==2.6.0+cu126
 numpy<2.0.0,>=1.24.0
 pydantic>=2.5.0
 pydantic-settings>=2.0.0

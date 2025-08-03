@@ -465,7 +465,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="RAPTOR API",
     description="API for Recursive Abstraction and Processing for Text Organization and Reduction",
-    version="0.5.0",
+    version="0.5.1",
     lifespan=lifespan,
 )
 
@@ -1529,6 +1529,7 @@ class ClusteringMetadata(BaseModel):
     temperature: float
     context_window: int
     custom_prompt_used: bool = False
+    source: str
     processing_time: ProcessingTimeMetadata
 
 
@@ -1866,6 +1867,7 @@ async def raptor(
                 context_window=context_window,
                 # Add a flag indicating if a custom prompt was used
                 custom_prompt_used=custom_prompt is not None,
+                source=file.filename,
                 processing_time=ProcessingTimeMetadata(
                     total=round(total_time, 2),
                     level_1=round(level1_time, 2),
