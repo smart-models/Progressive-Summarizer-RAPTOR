@@ -465,7 +465,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="RAPTOR API",
     description="API for Recursive Abstraction and Processing for Text Organization and Reduction",
-    version="0.5.1",
+    version="0.5.2",
     lifespan=lifespan,
 )
 
