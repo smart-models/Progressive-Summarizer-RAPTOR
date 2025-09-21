@@ -1,0 +1,314 @@
+name: Build and Publish Docker Images
+
+# Trigger workflow ONLY on version tags
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Only on version tags (e.g. v0.6.1, v1.2.3)
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job to clean cache before build
+  clean-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clear GitHub Actions Cache
+        run: |
+          echo "🧹 Clearing potentially corrupted cache..."
+          # GitHub Actions cache cleanup is done automatically
+          # This step is just for logging
+    
+  build-and-push:
+    needs: clean-cache
+    runs-on: ubuntu-latest
+    
+    # Set permissions for GITHUB_TOKEN
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cpu
+            dockerfile: docker/dockerfile
+            platforms: linux/amd64
+            cache-scope: cpu
+          - variant: gpu  
+            dockerfile: docker/dockerfile
+            platforms: linux/amd64
+            cache-scope: gpu
+    
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # Step 2: Set up Docker Buildx for advanced features
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+            image=moby/buildkit:latest
+      
+      # Step 3: Log in to GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      # Step 4: Prepare lowercase image name for Docker compatibility
+      - name: Prepare lowercase image name
+        id: image-name
+        run: |
+          # Convert to lowercase to ensure Docker compatibility
+          LOWERCASE_IMAGE_NAME=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME_LOWER=${LOWERCASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "📝 Using lowercase image name: ${LOWERCASE_IMAGE_NAME}"
+      
+      # Step 5: Extract metadata for Docker (ONLY version tags)
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}
+          flavor: |
+            latest=false
+          tags: |
+            # Specific version tag (e.g. v0.6.1-cpu, v0.6.1-gpu)
+            type=ref,event=tag,suffix=-${{ matrix.variant }}
+            # Latest tag for each version (latest-cpu, latest-gpu)
+            type=raw,value=latest-${{ matrix.variant }}
+      
+      # Step 6: Generate build args based on variant
+      - name: Set build arguments
+        id: build-args
+        run: |
+          if [ "${{ matrix.variant }}" = "gpu" ]; then
+            echo "BUILD_ARGS=ENABLE_GPU=true" >> $GITHUB_OUTPUT
+            echo "LABELS=gpu.cuda=12.1.0" >> $GITHUB_OUTPUT
+          else
+            echo "BUILD_ARGS=ENABLE_GPU=false" >> $GITHUB_OUTPUT
+            echo "LABELS=gpu.cuda=none" >> $GITHUB_OUTPUT
+          fi
+      
+      # Step 7: Build and push Docker image (with retry for GPU)
+      - name: Build and push Docker image (${{ matrix.variant }})
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.variant=${{ matrix.variant }}
+            ${{ steps.build-args.outputs.LABELS }}
+          # Cache with more specific and clean scope
+          cache-from: type=gha,scope=v2-${{ matrix.variant }}-${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=v2-${{ matrix.variant }}-${{ github.ref_name }}
+          # Disable features that can cause conflicts
+          provenance: false
+          sbom: false
+          # Output only digest, no extra metadata
+          outputs: type=registry
+          build-args: |
+            ${{ steps.build-args.outputs.BUILD_ARGS }}
+        # Retry for GPU builds that often fail due to cache issues
+        continue-on-error: ${{ matrix.variant == 'gpu' }}
+      
+      # Extra step: Retry GPU build if it fails
+      - name: Retry GPU build (if needed)
+        if: failure() && matrix.variant == 'gpu'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.variant=${{ matrix.variant }}
+            ${{ steps.build-args.outputs.LABELS }}
+          # No cache for retry
+          no-cache: true
+          provenance: false
+          sbom: false
+          outputs: type=registry
+          build-args: |
+            ${{ steps.build-args.outputs.BUILD_ARGS }}
+      
+      # Step 8: Output image details
+      - name: Image details
+        run: |
+          echo "✅ Successfully built and pushed ${{ matrix.variant }} image"
+          echo "📦 Image: ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}"
+          echo "🏷️ Tags: ${{ steps.meta.outputs.tags }}"
+          echo "🔖 Digest: ${{ steps.build.outputs.digest }}"
+          echo "📋 Version: ${{ github.ref_name }}"
+  
+  # Job to clean up unwanted SHA images
+  cleanup-unwanted-images:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: success()
+    
+    permissions:
+      packages: write
+    
+    steps:
+      - name: Clean up unwanted SHA images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🧹 Looking for unwanted SHA-only images to cleanup..."
+          
+          # Get package name (convert to lowercase)
+          PACKAGE_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          
+          # List package versions
+          curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/user/packages/container/${PACKAGE_NAME}/versions" \
+            | jq -r '.[] | select(.metadata.container.tags | length == 0 or (.metadata.container.tags | all(startswith("sha256")))) | .id' \
+            | while read version_id; do
+              if [ -n "$version_id" ]; then
+                echo "Deleting unwanted image version: $version_id"
+                curl -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                  "https://api.github.com/user/packages/container/${PACKAGE_NAME}/versions/${version_id}" || true
+              fi
+            done
+          
+          echo "✅ Cleanup completed"
+
+  # Job to verify images after push
+  verify-images:
+    needs: [build-and-push, cleanup-unwanted-images]
+    runs-on: ubuntu-latest
+    
+    permissions:
+      packages: read
+    
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Prepare lowercase image name
+        id: image-name
+        run: |
+          # Convert to lowercase for Docker compatibility
+          LOWERCASE_IMAGE_NAME=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME_LOWER=${LOWERCASE_IMAGE_NAME}" >> $GITHUB_OUTPUT
+      
+      - name: Verify CPU image
+        run: |
+          echo "Verifying CPU image for version ${{ steps.version.outputs.VERSION }}..."
+          docker pull ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:${{ steps.version.outputs.VERSION }}-cpu
+          docker pull ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:latest-cpu
+      
+      - name: Verify GPU image  
+        run: |
+          echo "Verifying GPU image for version ${{ steps.version.outputs.VERSION }}..."
+          docker pull ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:${{ steps.version.outputs.VERSION }}-gpu
+          docker pull ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:latest-gpu
+      
+      - name: List available tags
+        run: |
+          echo "📋 Available image tags for this release:"
+          echo "- ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:${{ steps.version.outputs.VERSION }}-cpu"
+          echo "- ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:${{ steps.version.outputs.VERSION }}-gpu"
+          echo "- ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:latest-cpu"
+          echo "- ${{ steps.image-name.outputs.IMAGE_NAME_LOWER }}:latest-gpu"
+  
+  # Job to create release notes
+  create-release:
+    needs: [build-and-push, cleanup-unwanted-images]
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## 🚀 Progressive Summarizer RAPTOR - Docker Images Published
+            
+            This release includes Docker images for both CPU and GPU variants of the Progressive Summarizer using RAPTOR methodology:
+            
+            ### CPU Image
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-cpu
+            docker pull ghcr.io/${{ github.repository }}:latest-cpu
+            ```
+            
+            ### GPU Image (CUDA 12.1)
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-gpu
+            docker pull ghcr.io/${{ github.repository }}:latest-gpu
+            ```
+            
+            ### Docker Compose
+            ```bash
+            # CPU deployment
+            cd docker
+            docker compose --profile cpu up -d
+            
+            # GPU deployment (recommended for large documents)
+            cd docker
+            docker compose --profile gpu up -d
+            ```
+            
+            ### Quick Start
+            ```bash
+            # Run CPU version
+            docker run -p 8080:8080 ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-cpu
+            
+            # Run GPU version (requires nvidia-docker)
+            docker run --gpus all -p 8080:8080 ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-gpu
+            ```
+            
+            ### Features
+            - Progressive document summarization using RAPTOR (Recursive Abstractive Processing for Tree-Organized Retrieval)
+            - Hierarchical clustering and summarization for long documents
+            - Multi-level abstraction with configurable depth
+            - GPU acceleration for transformer models and embedding generation
+            - Support for various document formats (PDF, TXT, DOCX, etc.)
+            - RESTful API with streaming responses
+            - Configurable chunk sizes and overlap strategies
+            - Memory-efficient processing for large documents
+            
+            ### RAPTOR Methodology
+            This implementation leverages the RAPTOR approach for:
+            - Building hierarchical summaries through recursive clustering
+            - Creating tree-structured representations of document content
+            - Enabling multi-scale information retrieval and summarization
+            - Optimizing context-aware summarization for different abstraction levels
+            
+            For more information, see the [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+          draft: false
+          prerelease: false
+          generate_release_notes: true
