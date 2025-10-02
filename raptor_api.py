@@ -17,12 +17,12 @@ import gc
 from typing import List, Dict, Optional, Tuple, Union
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 from numba.core.errors import NumbaWarning
 from sklearn.mixture import GaussianMixture
 from sentence_transformers import SentenceTransformer
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from tqdm import tqdm
 from contextlib import asynccontextmanager
@@ -465,7 +465,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="RAPTOR API",
     description="API for Recursive Abstraction and Processing for Text Organization and Reduction",
-    version="0.5.2",
+    version="0.5.3",
     lifespan=lifespan,
 )
 
@@ -1550,6 +1550,41 @@ class ClusteringResult(BaseModel):
     metadata: ClusteringMetadata
 
 
+class RaptorInput(BaseModel):
+    """Input parameters for RAPTOR clustering endpoint."""
+    llm_model: Optional[str] = Field(
+        default=get_settings().llm_model,
+        description="LLM model to use for summarization"
+    )
+    embedder_model: Optional[str] = Field(
+        default=get_settings().embedder_model,
+        description="Embedding model to use for generating embeddings"
+    )
+    threshold_tokens: Optional[int] = Field(
+        default=None,
+        description="Token threshold for chunk optimization. If None, no optimization is applied"
+    )
+    temperature: Optional[float] = Field(
+        default=get_settings().temperature,
+        description="Temperature for text generation (0.0 to 1.0). Controls randomness in LLM output",
+        ge=0.0,
+        le=1.0
+    )
+    context_window: Optional[int] = Field(
+        default=get_settings().context_window,
+        description="Maximum context window size for LLM",
+        gt=0
+    )
+    custom_prompt: Optional[str] = Field(
+        default=None,
+        description="Custom prompt template for summarization"
+    )
+    
+    class Config:
+        # Allow extra fields to be ignored for forward compatibility
+        extra = "ignore"
+
+
 @app.get("/")
 async def health_check():
     """Check the health status of the API service.
@@ -1579,40 +1614,14 @@ async def health_check():
 
 @app.post("/raptor/", response_class=JSONResponse)
 async def raptor(
-    file: UploadFile = File(...),
-    llm_model: str = Query(
-        None, description="LLM model to use", example=get_settings().llm_model
-    ),
-    embedder_model: str = Query(
-        None,
-        description="Embedding model to use",
-        example=get_settings().embedder_model,
-    ),
-    threshold_tokens: Optional[int] = Query(
-        None, description="Token threshold for chunk optimization"
-    ),
-    temperature: float = Query(
-        None,
-        description="Temperature for text generation",
-        example=get_settings().temperature,
-    ),
-    context_window: int = Query(
-        None, description="Context window size", example=get_settings().context_window
-    ),
-    custom_prompt: Optional[str] = Query(
-        None, description="Custom prompt template for summarization", example=""
-    ),
+    file: UploadFile = File(..., description="JSON file (.json) containing chunks to process with a 'chunks' array"),
+    input_data: RaptorInput = Depends(),
 ):
     """Process semantic chunks from an uploaded JSON file for hierarchical clustering.
 
     Args:
-        file (UploadFile): JSON file (.json) containing chunks to process with a 'chunks' array
-        llm_model (str): LLM model to use for summarization
-        embedder_model (str): Model to use for generating embeddings
-        threshold_tokens (Optional[int]): Maximum token limit for summaries
-        temperature (float): Controls randomness in LLM output (0.0 to 1.0)
-        context_window (int): Maximum context window size for LLM
-        custom_prompt (Optional[str]): Optional custom prompt template as a string
+        file: JSON file (.json) containing chunks to process with a 'chunks' array
+        input_data: RAPTOR processing parameters (uses settings defaults if not provided)
 
     Returns:
         JSONResponse: Hierarchical clustering results with metadata
@@ -1629,12 +1638,18 @@ async def raptor(
                 detail="Ollama server is not reachable. Please ensure Ollama is running and accessible.",
             )
 
+        # Get settings and apply defaults
+        settings = get_settings()
+        llm_model = input_data.llm_model or settings.llm_model
+        embedder_model = input_data.embedder_model or settings.embedder_model
+        temperature = input_data.temperature if input_data.temperature is not None else settings.temperature
+        context_window = input_data.context_window if input_data.context_window is not None else settings.context_window
+        threshold_tokens = input_data.threshold_tokens
+        custom_prompt = input_data.custom_prompt
+        
         # Verify model availability before processing
         # This handles the case where models might be deleted from Ollama after the app has started
         logger.info(f"Verifying availability of LLM model: '{llm_model}'")
-        settings = get_settings()
-        # Use the provided model or get from settings
-        llm_model = llm_model or settings.llm_model
         llm_model = ensure_ollama_model(llm_model, fallback_model=settings.llm_model)
 
         # Use the custom prompt if provided as a string parameter, otherwise use the default
