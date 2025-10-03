@@ -22,7 +22,7 @@ from pydantic_settings import BaseSettings
 from numba.core.errors import NumbaWarning
 from sklearn.mixture import GaussianMixture
 from sentence_transformers import SentenceTransformer
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
 from tqdm import tqdm
 from contextlib import asynccontextmanager
@@ -465,7 +465,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="RAPTOR API",
     description="API for Recursive Abstraction and Processing for Text Organization and Reduction",
-    version="0.5.3",
+    version="0.5.4",
     lifespan=lifespan,
 )
 
@@ -1616,6 +1616,7 @@ async def health_check():
 async def raptor(
     file: UploadFile = File(..., description="JSON file (.json) containing chunks to process with a 'chunks' array"),
     input_data: RaptorInput = Depends(),
+    request: Request = None,
 ):
     """Process semantic chunks from an uploaded JSON file for hierarchical clustering.
 
@@ -1640,12 +1641,65 @@ async def raptor(
 
         # Get settings and apply defaults
         settings = get_settings()
-        llm_model = input_data.llm_model or settings.llm_model
-        embedder_model = input_data.embedder_model or settings.embedder_model
-        temperature = input_data.temperature if input_data.temperature is not None else settings.temperature
-        context_window = input_data.context_window if input_data.context_window is not None else settings.context_window
+
+        llm_model = input_data.llm_model
+        embedder_model = input_data.embedder_model
+        temperature = input_data.temperature
+        context_window = input_data.context_window
         threshold_tokens = input_data.threshold_tokens
         custom_prompt = input_data.custom_prompt
+
+        # For multipart clients sending parameters as form fields, extract values manually
+        if any(
+            value is None
+            for value in (llm_model, embedder_model, temperature, context_window)
+        ) or (threshold_tokens is None and request is not None):
+            try:
+                form_data = await request.form() if request is not None else None
+            except Exception:
+                form_data = None
+
+            if form_data is not None:
+                def _get_form_value(key: str):
+                    raw = form_data.get(key)
+                    return raw if raw not in (None, "") else None
+
+                if llm_model is None:
+                    llm_model = _get_form_value("llm_model")
+                if embedder_model is None:
+                    embedder_model = _get_form_value("embedder_model")
+                if temperature is None:
+                    temp_value = _get_form_value("temperature")
+                    if temp_value is not None:
+                        try:
+                            temperature = float(temp_value)
+                        except ValueError:
+                            logger.warning("Invalid temperature value received in form data; falling back to settings default.")
+                if context_window is None:
+                    context_value = _get_form_value("context_window")
+                    if context_value is not None:
+                        try:
+                            context_window = int(context_value)
+                        except ValueError:
+                            logger.warning("Invalid context_window value received in form data; falling back to settings default.")
+                if threshold_tokens is None:
+                    threshold_value = _get_form_value("threshold_tokens")
+                    if threshold_value is not None:
+                        try:
+                            threshold_tokens = int(threshold_value)
+                        except ValueError:
+                            logger.warning("Invalid threshold_tokens value received in form data; keeping original value.")
+                if custom_prompt is None:
+                    custom_prompt = _get_form_value("custom_prompt")
+
+        llm_model = llm_model or settings.llm_model
+        embedder_model = embedder_model or settings.embedder_model
+        temperature = (
+            temperature if temperature is not None else settings.temperature
+        )
+        context_window = (
+            context_window if context_window is not None else settings.context_window
+        )
         
         # Verify model availability before processing
         # This handles the case where models might be deleted from Ollama after the app has started
